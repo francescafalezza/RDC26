@@ -1,0 +1,44 @@
+# --- Eseguibili e Binari ---
+# Esclude tutti i file senza estensione (comuni eseguibili su Linux/macOS)
+# Attenzione: se hai file senza estensione che vuoi tenere, usa regole più specifiche
+*.exe
+*.out
+*.app
+
+# --- File Oggetto e Librerie ---
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
+# --- Cartelle di Build (se usi Makefile o CMake) ---
+[Bb]uild/
+[Dd]ist/
+
+# --- File di Debug e Log ---
+*.log
+*.dSYM/
+*.stackdump
+
+# --- IDE e Editor ---
+# Visual Studio Code
+.vscode/
+# Visual Studio
+.vs/
+x64/
+Debug/
+Release/
+# Xcode
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+# CLion / JetBrains
+.idea/
+cmake-build-*/
+
+# --- File di sistema ---
+.DS_Store
+Thumbs.db

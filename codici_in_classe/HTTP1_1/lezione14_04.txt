@@ -1,0 +1,75 @@
+LEZIONE 14/04/2016
+
+cose fatte:sistemare client http in modo che funzioni con nuova versione. 
+HTTP1_1 introduce host (per gestione connessioni multiple) e metodi 
+cosa fare oggi:come modificare il codice vecchio in modo che funzioni.
+HTTP1.0:
+client               server
+    socket ()          socket()
+    connect()          bind()
+                       listen()
+                       accept()
+    write()               
+                        read()
+                        write()
+    read()              
+                        close()
+    close()
+
+    perchè il client smette di leggere? come è in grado di sapere che finisce la comunicazione?
+    Legge un end of file, 
+    il server quando finisce la write fa close(), lo standard dell'HTTP1.0 è questo: 
+    il server e il client non sono in grado di rispodnere a più di una richiesta senza chiudere la connessione
+
+    Se voglio fare un'altra richiesta?Fare una nuova connect(), 
+    ad ogni connect() siamo costretti a stabilire una connessione TCP (quindi mandare 3 pacchetti)
+    Il server come fa a sapere di aver finito di leggere la request()?Legge finchè non trova \r\n\r\n
+    o dopo POST il server cerca il content length, capisce quanti byte deve leggere nel body 
+    e legge esattamente quel numero di byte dopo la fine degli header.
+
+HTTP1.1 permette di non dover chiudere ogni volta il socket, 
+ma poter continuare a leggere e scrivere richieste
+
+client               server
+    socket ()          socket()
+    connect()          bind()
+                       listen()
+                       accept()
+    write()               
+                        read()
+                        write()
+    read()              
+                        
+    close()
+
+come il server legge la richiesta non cambia.
+Cosa cambia? dopo la write() del server e read() del client il server non chiude la connessione
+se devo fare un'altra richiesta basta rifare wirte() e ricominciare. 
+E' il client che dopo aver finito di leggere chiude la connessione, e successivamente il server. 
+Il problema di adesso è che non sappiamo quando il server avrà termianto la risposta
+come fa il client a sapere che la risposta è finita? 
+    1. Content length:Anche il server può mandare il content length degli header 
+        LIMITE: bisogna sapere a priori la lunghezza del contenuto, va bene per pagine statiche ma non dinamiche
+   
+    2. Transfer encoding chuncked: viene generato un pezzo del contenuto e viene aggiunto al buffer di invio, 
+        e si continua così fino alla fine e nel frattempo il client può iniziare a processarli,
+        il client è in grado di sapere di aver finito di leggere un blocco, non tutto il file.
+        Quando l server indica che il transfer encoding è chunked allora il client sa che il body verrà inviato a blocchi
+        COME FUNZIONA IL BLOCCO: ogni blocco del body viene preceduto dal numero di byte del blocco in HEX +\r\n +  [...] + \r\n+ HEX...
+        l'ultimo body ha grandezza 0. 
+
+
+CONSIDERAZIONI
+1. E' possibile avere una comunicazione simile all' HTTP1.0? Si, esiste un header "Connection"
+    Definisce se il server mantiene la connessione attiva o la chiude alla fine della risposta.
+    keep-alive
+    close
+
+2. Header host. Nasce la necessità dell'header host perchè sullo stesso indirizzo IP si possono avere più domini
+    Definisce il dominio, è obbligatorio, se non lo mettiamo otteniamo 400 (bad request)
+
+Come adattiamo il client? 
+in HTTP1.0 prima leggevamo tutto e poi facevamo il parsing 
+in HTTP1.1 leggiamo solo gli header poi: 
+        se c'è transfer encoding leggo i blocchi.
+        se non c'è leggo il content length e leggo gli n byte indicati.
