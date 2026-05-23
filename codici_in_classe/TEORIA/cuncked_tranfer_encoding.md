@@ -32,6 +32,7 @@ NB:
 Ogni chunk è:
 - preceduto dalla sua dimensione in esadecimale
 - seguito da una sequenza di ritorno a capo <-> CTRF (\r\n).
+
 L’ultimo chunk ha una dimensione di 0, segnalando la fine del messaggio.
 
 
