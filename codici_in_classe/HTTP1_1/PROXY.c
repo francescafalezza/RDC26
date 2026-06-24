@@ -19,37 +19,47 @@ int inviaByte(int fd, char *buffer, int numeroByte){
 
 int main(){
 
-                struct sitePort{
-                        char* sito;
-                        short int port;
-                };
+    /*Tabella di routing del proxy. 
+    Associa ogni hostname a una porta locale.
+    Quando arriva una richiesta www.sito1.com, il proxy sa che deve connetersi a localhost:8888*/
 
-                struct sitePort mappa[2];
+    struct sitePort{
+        char* sito;
+        short int port;
+        };
 
-                mappa[0].sito = "www.sito1.com";
-                mappa[0].port = 8888;
+    struct sitePort mappa[2];
 
-                mappa[1].sito = "www.sito2.com";
-                mappa[1].port = 8889;
+    mappa[0].sito = "www.sito1.com";
+    mappa[0].port = 8888;
 
-                struct header {
+    mappa[1].sito = "www.sito2.com";
+    mappa[1].port = 8889;
+
+    struct header {
           char *n;
           char *v;
       };
 
-      struct header h[100];
+    struct header h[100];
 
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    /*Sequenza del PASSIVE OPEN: 
+    crea il socket
+    lo associa alla porta 9012
+    si mette in ascolto*/
+
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0); //crea un endpoint TCP/IPv4
 
     int opt = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)); //permette di riutilizzare la porta immediataemnte dopo la chiusura del server
 
     struct sockaddr_in address;
     address.sin_family = AF_INET;
     address.sin_port = htons(9012);
     address.sin_addr.s_addr = INADDR_ANY;
 
-    int s = bind(sockfd,(struct sockaddr *) &address, sizeof(address));
+    int s = bind(sockfd,(struct sockaddr *) &address, sizeof(address)); //lega il socket a un indirizzo e porta specifici
+    //senza bind il sistema non sa a quale processo consegnare i pacchetti in arrivo
 
     if(s != 0){
         perror("bind fallita");
@@ -59,7 +69,7 @@ int main(){
         fflush(stdout);
     }
 
-    int l = listen(sockfd, 5);
+    int l = listen(sockfd, 5); //mette in ascolto passivo il socket, con dimensione coda delle connessioni uguale a 5
 
 
     printf("il server è pronto per l'accept");
@@ -67,11 +77,20 @@ int main(){
     while(1) {
 
 
+        /*Estrae la prima connessione dalla coda e crea un NUOVO SOCKET dedicato a quel CLIENT.
+        Il socket originale contnua ad ascoltare*/
 
         int clientSockId = accept(sockfd, NULL, NULL);
 
+        /*Duplica processo corrente. 
+        Nel processo padre restituisce il PID del filio (>0).
+        Nel processo figlio restituisce 0.
+        Permette di gestire più client in parallelo:il padre torna subito ad accept,
+        il figlio gestisce la connessione*/
+
         int forkId = fork();
-        if(forkId == 0){
+
+        if(forkId == 0){        //SIAMO NEL FIGLIO
         printf("accept effettuata");
 
         char buffer[10000];
@@ -79,13 +98,15 @@ int main(){
         printf("mi preparo a leggere\n");
         fflush(stdout);
         int n = 0;
+
+        //PARSING degli header
         int lettoNomeHeader = 1;
         int byteLetti = 0;
         int headerIndex = 0;
-        while((n += read(clientSockId, buffer + n, 1))> 0 ){
+        while((n += read(clientSockId, buffer + n, 1))> 0 ){ //read legge un byte alla volta dal fd nel buffer
             //printf("%c", buffer[n - 1]);
             if(buffer[n -1] == '\n' && buffer[n - 2] == '\r'){
-                  if(buffer[n - 4] == 0){
+                  if(buffer[n - 4] == 0){       //=riga vuota =fine degli header
                       //body = buffer + byteLetti + 1;
                       break;
                   }
@@ -99,26 +120,34 @@ int main(){
               }
 
         }
+
+        //ESTRAZIONE DELL'HOST E ROUTING
+
         char *headerHost;
         char *contentLengthValue;
         int contentLength = 0;
+
         printf("stampo gli headers");
+
         for(int i = 0; i < headerIndex; i++){
             if(strcmp(h[i].n, "Content-Length") == 0){
                 sscanf(h[i].v, "%d", &contentLength);
                 contentLengthValue = h[i].v + 1;
             }
-                                                if(strcmp(h[i].n, "Host") == 0){
+
+            if(strcmp(h[i].n, "Host") == 0){
                 headerHost = h[i].v + 1;
-                                                        //printf("%s:%s\n", h[i].n, h[i].v);
-                                                }
+                //printf("%s:%s\n", h[i].n, h[i].v);
+            }
         }
 
-                                for(int i = 0; i < strlen(headerHost); i++){
-                                                if(headerHost[i] == ':')
-                                                        headerHost[i] = 0;
-                                }
-                                printf("\nheaderHost:%s\n\n",headerHost);
+        //Rimuove ": porta" dall'host, se presente
+        for(int i = 0; i < strlen(headerHost); i++){
+                if(headerHost[i] == ':')
+                headerHost[i] = 0;
+                }
+
+        printf("\nheaderHost:%s\n\n",headerHost);
 
         //printf("content length = %d\n", contentLength);
         char *requestLine = buffer;
@@ -134,11 +163,15 @@ int main(){
 
         if(strcmp(method, "CONNECT") == 0)
            printf("metodo = connect");
+
         else
            printf("metodo <> connect");
 
         fflush(stdout);
         char response[1000] = "HTTP/1.1 200 OK\r\nTransfer-Encoding:chunked\r\n\r\n";
+
+
+        //METODO GET 
 
         if(strcmp(method, "GET") == 0){
             if(strcmp(uri,"/") == 0){
@@ -166,45 +199,61 @@ int main(){
              }
 
             */
-       int socket2 = socket(AF_INET, SOCK_STREAM, 0);
-       struct sockaddr_in address2;
-                        short   int portaBackend = 0;
-                                for(int i = 0; i < 2; i++){
-                                        if(strcmp(mappa[i].sito, headerHost) == 0){
-                                                        portaBackend = mappa[i].port;
-                                        }
-                                }
+            int socket2 = socket(AF_INET, SOCK_STREAM, 0);
+            struct sockaddr_in address2;
 
-                                        if(portaBackend == 0){
-                                                        char responseBadGateway[1000];
-                                                        sprintf(responseBadGateway, "HTTP/1.1 502 Bad Gateway\r\n\r\n");
-                                                        inviaByte(clientSockId, responseBadGateway, strlen(responseBadGateway));
-                                                        exit(0);
-                                        }
-                                address2.sin_family = AF_INET;
-                                address2.sin_port = htons(portaBackend); //big endian di 8080 (network byte order)
+            //cerco nella mappa
+            short   int portaBackend = 0;
+            for(int i = 0; i < 2; i++){
+                if(strcmp(mappa[i].sito, headerHost) == 0){
+                    portaBackend = mappa[i].port;
+                }
+            }
+            
+            //se il sito non è presenta nella mappa, restituisco Bad Gataway
+            if(portaBackend == 0){
+                char responseBadGateway[1000];
+                sprintf(responseBadGateway, "HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                inviaByte(clientSockId, responseBadGateway, strlen(responseBadGateway));
+                exit(0);
+              }
+            
 
-                                                printf("\n\nmi connetto alla porta:%d\n\n", portaBackend);
+              /*Il proxy apre una seconda connessione verso il backend
+              Gli manda la richiesta riformatatta 
+              ritrasemtte la risposta byte per byte al client originale*/
 
-             char* ip = (char*)&address2.sin_addr.s_addr;// = *(unsigned int*) addr->h_addr;
-                                                ip[0] = 127; ip[1] = 0; ip[2] = 0; ip[3] = 1;
+            address2.sin_family = AF_INET;
+            address2.sin_port = htons(portaBackend); //big endian di 8080 (network byte order)
 
-            int c = connect(socket2,(struct sockaddr*) &address2, sizeof(address2));
+            printf("\n\nmi connetto alla porta:%d\n\n", portaBackend);
+
+            char* ip = (char*)&address2.sin_addr.s_addr;// = *(unsigned int*) addr->h_addr;
+            ip[0] = 127; ip[1] = 0; ip[2] = 0; ip[3] = 1;
+
+            int c = connect(socket2,(struct sockaddr*) &address2, sizeof(address2)); //avvia una three way handshake TCP verso il server remoto
             char request2[1000];
+
+            //IMPORTANTE! Connection:close, senza di esso il backend terrebbe la connessione aperta indefinitivamente
             sprintf(request2, "GET %s HTTP/1.1\r\nConnection:close\r\nHost:%s\r\n\r\n", uri, headerHost);
-                                                 printf("\n\nsto inviando:%s\n\n", request2);
-             inviaByte(socket2, request2, strlen(request2));
+            printf("\n\nsto inviando:%s\n\n", request2);
+            inviaByte(socket2, request2, strlen(request2));
 
              char buffer2[1000];
              int m = 0;
+
              while(m = read(socket2, buffer2, sizeof(buffer2)> 0)){
                         printf("risposta:%s\n", buffer2);
-                                                                        inviaByte(clientSockId, buffer2, m);
+                        inviaByte(clientSockId, buffer2, m);
              }
 
 
 
-        } else if(strcmp(method, "POST") == 0) {
+        } 
+        
+        //METODO POST: se la uri inizia con /cgi-bin, il proxy esegue lo script e restituisce l'output al client
+        
+        else if(strcmp(method, "POST") == 0) {
             if(memcmp(uri, "/cgi-bin",8)==0){
                int pid = fork();
                 if(pid == 0){
@@ -245,11 +294,16 @@ int main(){
                 printf("buffer Body:%s\n", bufferFile);
                 inviaByte(clientSockId, response, strlen(response));
             }
-        } else if(strcmp(method, "CONNECT") == 0){
+        } 
+        
+        //METODO CONNECT: il proxy si limita a fare da ponte tra client e server, senza reinterpretare la richiesta
+        else if(strcmp(method, "CONNECT") == 0){
                 printf("sono nella connect\n");
                 fflush(stdout);
                 char *port;
                 int j;
+
+                //Estrae host e porta dall'uri, che ha la forma host:porta
                 for( j = 0; uri[j] != ':'; j++){}
 
                 uri[j] = 0;
@@ -269,7 +323,7 @@ int main(){
 
 
              struct hostent *addr = gethostbyname(uri);
-              address2.sin_addr.s_addr = *(unsigned int*) addr->h_addr;
+            address2.sin_addr.s_addr = *(unsigned int*) addr->h_addr;
 
              int c = connect(socket2,(struct sockaddr*) &address2, sizeof(address2));
 
@@ -277,6 +331,15 @@ int main(){
             char buffer2[1000];
             sprintf(buffer2, "HTTP/1.1 200 Established\r\n\r\n");
             inviaByte(clientSockId, buffer2, strlen(buffer2));
+            
+
+            /*Un fork legge da socket2 e lo scrive sul socket del client 
+            l'altro legge da dal socket del client e lo scive su socket2
+            
+            Questo è il meccanismo di HTTPS: il proxy non può leggere il contenuto ma si limita a creare un tunnel
+            bidirezionale tra client e server, che si scambiano i dati criptati senza che il proxy possa interpretarli
+            */
+
 
             int fork2 = fork();
 
